@@ -2,6 +2,10 @@
 
 A simple self contained web server for ImpactJS that allows you to run both the game and weltmeister (level editor) without the need for Apache.
 
+## Why the fork?
+
+This is a fork from the [main repository](https://github.com/amadeus/python-impact) that fixes a bug with Windows and updates the server to use Python 3.x.
+
 
 ## How do I use this?
 

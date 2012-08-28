@@ -1,63 +1,54 @@
-import BaseHTTPServer
-import cgi
 import glob
+import http.server
 import json
 import mimetypes
-import os
-import os.path
-import urlparse
+from os import curdir, sep
+import socketserver
+import sys
+from urllib.parse import parse_qs
 
 # Various config settings for the python server
 SETTINGS = {
-    'port':        8080,
-    'logging':     False,
+    "port":        8001,
+    "logging":     False,
 
-    'api-save':    '/lib/weltmeister/api/save.php',
-    'api-browse':  '/lib/weltmeister/api/browse.php',
-    'api-glob':    '/lib/weltmeister/api/glob.php',
+    "api-save":    "/lib/weltmeister/api/save.php",
+    "api-browse":  "/lib/weltmeister/api/browse.php",
+    "api-glob":    "/lib/weltmeister/api/glob.php",
 
-    'image-types': ['.png', '.jpg', '.gif', '.jpeg'],
-
-    'mimetypes': {
-        'ogg': 'audio/ogg'
-    }
+    "image-types": [".png", ".jpg", ".gif", ".jpeg"]
 }
 
-# Get the current directory
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-if BASE_DIR[-1] != '/':
-    BASE_DIR += '/'
-
 # Blank favicon - prevents silly 404s from occuring if no favicon is supplied
-FAVICON_GIF = 'GIF89a\x01\x00\x01\x00\xf0\x00\x00\xff\xff\xff\x00\x00\x00!\xff\x0bXMP DataXMP\x02?x\x00!\xf9\x04\x05\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00@\x02\x02D\x01\x00;'
+BLANK_FAVICON = "GIF89a\x01\x00\x01\x00\xf0\x00\x00\xff\xff\xff\x00\x00\x00!\xff\x0bXMP DataXMP\x02?x\x00!\xf9\x04\x05\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00@\x02\x02D\x01\x00;"
 
-class HTTPHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+class HTTPHandler(http.server.BaseHTTPRequestHandler):
 
-    def send_json(self, obj, code=200, headers=None):
-        'Send response as JSON'
+    def send_json(self, obj, code = 200, headers = None):
+        '''Send response as JSON'''
         if not headers:
             headers = {}
         headers['Content-Type'] = 'application/json'
-        self.send_response(json.dumps(obj), code, headers)
+        self.send_response(json.dumps(obj).encode('utf-8'), code, headers)
 
-    def send_response(self, mesg, code=200, headers=None):
-        'Wraps sending a response down'
+    def send_response(self, data, code = 200, headers = None):
+        '''Wraps sending a response down'''
         if not headers:
             headers = {}
-        if 'Content-Type' not in headers:
-            headers['Content-Type'] = 'text/html'
-        BaseHTTPServer.BaseHTTPRequestHandler.send_response(self, code)
-        self.send_header('Content-Length', len(mesg))
+        #if 'Content-Type' not in headers:
+        #    headers['Content-Type'] = 'text/html'
+        http.server.BaseHTTPRequestHandler.send_response(self, code)
+        self.send_header('Content-Length', len(data))
         if headers:
-            for k, v in headers.iteritems():
+            for k, v in headers.items():
                 self.send_header(k, v)
         self.end_headers()
-        self.wfile.write(mesg)
+        self.wfile.write(data)
 
     def log_request(self, *args, **kwargs):
-        'If logging is disabled '
+        '''If logging is disabled'''
         if SETTINGS['logging']:
-            BaseHTTPServer.BaseHTTPRequestHandler.log_request(self, *args, **kwargs)
+            self.log_request(*args, **kwargs)
 
     def init_request(self):
         parts = self.path.split('?', 1)
@@ -67,7 +58,7 @@ class HTTPHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.query_params = {}
         else:
             self.file_path = parts[0]
-            self.query_params = urlparse.parse_qs(parts[1])
+            self.query_params = parse_qs(parts[1])
 
     def do_GET(self):
         self.init_request()
@@ -86,7 +77,7 @@ class HTTPHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         self.route_request('POST')
 
-    def route_request(self, method='GET'):
+    def route_request(self, method = 'GET'):
         if self.file_path == SETTINGS['api-save']:
             self.save()
         elif self.file_path == SETTINGS['api-browse']:
@@ -96,7 +87,7 @@ class HTTPHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif method == 'GET':
             self.serve_file()
         else:
-            self.barf()
+            self.illegal()
 
     def save(self):
         resp = {'error': 0}
@@ -110,7 +101,7 @@ class HTTPHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     open(path, 'w').write(data)
                 except:
                     resp['error'] = 2
-                    resp['msg'] = 'Couldn\'t write to file %d' % path
+                    resp['msg'] = "Couldn't write to file %d" % path
 
             else:
                 resp['error'] = 3
@@ -141,10 +132,6 @@ class HTTPHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             elif 'scripts' in types:
                 files = [f for f in files if os.path.splitext(f)[1] == '.js']
 
-        if os.name == 'nt':
-            files = [f.replace('\\', '/') for f in files]
-            dirs = [d.replace('\\', '/') for d in dirs]
-
         response = {
             'files': files,
             'dirs': dirs,
@@ -161,24 +148,7 @@ class HTTPHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             more = glob.glob(g)
             files.extend(more)
 
-        if os.name == 'nt':
-            files = [f.replace('\\', '/') for f in files]
-
         return self.send_json(files)
-
-    def guess_type(self, path):
-        type, _ = mimetypes.guess_type(path)
-
-        if not type:
-            ext = path.split('.')[-1]
-            if ext in SETTINGS['mimetypes'].keys():
-                type = SETTINGS['mimetypes'][ext]
-
-        # Winblows hack
-        if os.name == "nt" and type.startswith("image"):
-            type = type.replace("x-", "")
-
-        return type
 
     def serve_file(self):
         path = self.file_path
@@ -195,28 +165,26 @@ class HTTPHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         path = path.replace('..', '')
 
         # Determine the fullpath
-        path = os.path.join(BASE_DIR, path)
+        path = curdir + sep + path
 
         try:
             data = open(path, 'rb').read()
-            type = self.guess_type(path)
-            self.send_response(data, 200, headers={'Content-Type': type})
+            type, _ = mimetypes.guess_type(path)
+            self.send_response(data, 200, headers = {'Content-Type': type})
         except:
-            if '/favicon.ico' in path:
-                self.send_response(FAVICON_GIF, 200, headers={'Content-Type': 'image/gif'})
+            if sep + 'favicon.ico' in path:
+                self.send_response(BLANK_FAVICON.encode('utf-8'), 200, headers = {"Content-Type": "image/gif"})
             else:
                 self.send_response('', 404)
 
-    def barf(self):
-        self.send_response('barf', 405)
-
+    def illegal(self):
+        self.send_response('Method Not Allowed', 405)
 
 def main():
     addr = ('', SETTINGS['port'])
-    server = BaseHTTPServer.HTTPServer(addr, HTTPHandler)
-    print 'Running ImpactJS Server\nGame:   http://localhost:%d\nEditor: http://localhost:%d/editor' % (addr[1], addr[1])
+    server = http.server.HTTPServer(addr, HTTPHandler)
+    print('Running ImpactJS Server on http://localhost:%d' % addr[1])
     server.serve_forever()
 
 if __name__ == '__main__':
     main()
-
