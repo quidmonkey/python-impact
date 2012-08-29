@@ -2,14 +2,14 @@ import glob
 import http.server
 import json
 import mimetypes
-from os import curdir, sep
+import os
 import socketserver
 import sys
 from urllib.parse import parse_qs
 
 # Various config settings for the python server
 SETTINGS = {
-    "port":        8001,
+    "port":        8080,
     "logging":     False,
 
     "api-save":    "/lib/weltmeister/api/save.php",
@@ -93,7 +93,8 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         resp = {'error': 0}
         if 'path' in self.post_params and 'data' in self.post_params:
             path = self.post_params['path'][0]
-            path = os.path.join(BASE_DIR, path.replace('..', ''))
+            #BASE_DIR
+            path = os.path.join(os.curdir + os.sep, path.replace('..', ''))
             data = self.post_params['data'][0]
 
             if path.endswith('.js'):
@@ -121,7 +122,8 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
             dir += '/'
 
         # Get the dir and files
-        dirs = [d for d in os.listdir(os.path.join(BASE_DIR, dir)) if '.' not in d]
+        # BASE_DIR
+        dirs = [d for d in os.listdir(os.path.join(os.curdir + os.sep, dir)) if '.' not in d]
         files = glob.glob(dir + '*.*')
 
         # Filter on file types
@@ -131,6 +133,11 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
                 files = [f for f in files if os.path.splitext(f)[1] in SETTINGS['image-types']]
             elif 'scripts' in types:
                 files = [f for f in files if os.path.splitext(f)[1] == '.js']
+
+        # Format to Windows file structure
+        if os.name == 'nt':
+            files = [f.replace('\\', '/') for f in files]
+            dirs = [d.replace('\\', '/') for d in dirs]
 
         response = {
             'files': files,
@@ -147,6 +154,10 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
             g = g.replace('..', '')
             more = glob.glob(g)
             files.extend(more)
+
+        # Format to Windows file structure
+        if os.name == 'nt':
+            files = [f.replace('\\', '/') for f in files]
 
         return self.send_json(files)
 
@@ -165,14 +176,14 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         path = path.replace('..', '')
 
         # Determine the fullpath
-        path = curdir + sep + path
+        path = os.curdir + os.sep + path
 
         try:
             data = open(path, 'rb').read()
             type, _ = mimetypes.guess_type(path)
             self.send_response(data, 200, headers = {'Content-Type': type})
         except:
-            if sep + 'favicon.ico' in path:
+            if os.sep + 'favicon.ico' in path:
                 self.send_response(BLANK_FAVICON.encode('utf-8'), 200, headers = {"Content-Type": "image/gif"})
             else:
                 self.send_response('', 404)
@@ -183,7 +194,7 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
 def main():
     addr = ('', SETTINGS['port'])
     server = http.server.HTTPServer(addr, HTTPHandler)
-    print('Running ImpactJS Server on http://localhost:%d' % addr[1])
+    print('Running ImpactJS Server\nGame:\thttp://localhost:%d\nEditor:\thttp://localhost:%d/editor' % (addr[1], addr[1]))
     server.serve_forever()
 
 if __name__ == '__main__':
