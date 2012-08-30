@@ -2,7 +2,7 @@ Python Impact Web Server Changelog
 ==================================
 
 ## v1.1.2
-- Fixed do_POST() to properly parse header
+- Fixed do_POST() to properly parse header and updated the deprecated cgi.parse_qs to urllib.parse.parse_qs
 - Fixed file path in browse()
 - Fixed save() so that the post_params are properly converted from bytes to string.
 
