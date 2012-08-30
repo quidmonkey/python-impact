@@ -67,9 +67,9 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         self.init_request()
-        #print('headers',self.headers)
 
         # From http://stackoverflow.com/questions/4233218/python-basehttprequesthandler-post-variables
+        # Grab content-type and content-length from self.headers dictionary
         ctype, pdict = cgi.parse_header(self.headers['content-type'])
         if ctype == 'multipart/form-data':
             self.post_params = cgi.parse_multipart(self.rfile, pdict)
@@ -93,8 +93,9 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
 
     def save(self):
         resp = {'error': 0}
+        # Look for byte keys
         if b'path' in self.post_params and b'data' in self.post_params:
-            #Convert from bytes to string
+            # Convert from bytes to string
             path = self.post_params[b'path'][0].decode('utf-8')
             path = os.curdir + os.sep + path.replace('..', '')
             data = self.post_params[b'data'][0].decode('utf-8')
@@ -175,7 +176,7 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         # Security, remove the ..
         path = path.replace('..', '')
 
-        # Determine the fullpath
+        # Determine the relative path
         path = os.curdir + os.sep + path
 
         try:
