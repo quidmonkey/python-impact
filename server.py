@@ -1,3 +1,4 @@
+import cgi
 import glob
 import http.server
 import json
@@ -19,7 +20,7 @@ SETTINGS = {
     "image-types": [".png", ".jpg", ".gif", ".jpeg"]
 }
 
-# Blank favicon - prevents silly 404s from occuring if no favicon is supplied
+# Blank favicon - prevents 404s from occuring if no favicon is supplied
 BLANK_FAVICON = "GIF89a\x01\x00\x01\x00\xf0\x00\x00\xff\xff\xff\x00\x00\x00!\xff\x0bXMP DataXMP\x02?x\x00!\xf9\x04\x05\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00@\x02\x02D\x01\x00;"
 
 class HTTPHandler(http.server.BaseHTTPRequestHandler):
@@ -35,8 +36,8 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         '''Wraps sending a response down'''
         if not headers:
             headers = {}
-        #if 'Content-Type' not in headers:
-        #    headers['Content-Type'] = 'text/html'
+        if 'Content-Type' not in headers:
+            headers['Content-Type'] = 'text/html'
         http.server.BaseHTTPRequestHandler.send_response(self, code)
         self.send_header('Content-Length', len(data))
         if headers:
@@ -66,13 +67,14 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         self.init_request()
+        #print('headers',self.headers)
 
         # From http://stackoverflow.com/questions/4233218/python-basehttprequesthandler-post-variables
-        ctype, pdict = cgi.parse_header(self.headers.getheader('content-type'))
+        ctype, pdict = cgi.parse_header(self.headers['content-type'])
         if ctype == 'multipart/form-data':
             self.post_params = cgi.parse_multipart(self.rfile, pdict)
         elif ctype == 'application/x-www-form-urlencoded':
-            length = int(self.headers.getheader('content-length'))
+            length = int(self.headers['content-length'])
             self.post_params = cgi.parse_qs(self.rfile.read(length), keep_blank_values=1)
 
         self.route_request('POST')
@@ -91,18 +93,18 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
 
     def save(self):
         resp = {'error': 0}
-        if 'path' in self.post_params and 'data' in self.post_params:
-            path = self.post_params['path'][0]
-            #BASE_DIR
-            path = os.path.join(os.curdir + os.sep, path.replace('..', ''))
-            data = self.post_params['data'][0]
+        if b'path' in self.post_params and b'data' in self.post_params:
+            #Convert from bytes to string
+            path = self.post_params[b'path'][0].decode('utf-8')
+            path = os.curdir + os.sep + path.replace('..', '')
+            data = self.post_params[b'data'][0].decode('utf-8')
 
             if path.endswith('.js'):
                 try:
                     open(path, 'w').write(data)
                 except:
                     resp['error'] = 2
-                    resp['msg'] = "Couldn't write to file %d" % path
+                    resp['msg'] = "Couldn't write to file %s" % path
 
             else:
                 resp['error'] = 3
@@ -121,9 +123,7 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         if dir[-1] != '/':
             dir += '/'
 
-        # Get the dir and files
-        # BASE_DIR
-        dirs = [d for d in os.listdir(os.path.join(os.curdir + os.sep, dir)) if '.' not in d]
+        dirs = [d for d in os.listdir(os.curdir + os.sep + dir) if '.' not in d]
         files = glob.glob(dir + '*.*')
 
         # Filter on file types
