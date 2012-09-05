@@ -25,6 +25,8 @@ BLANK_FAVICON = "GIF89a\x01\x00\x01\x00\xf0\x00\x00\xff\xff\xff\x00\x00\x00!\xff
 
 class HTTPHandler(http.server.BaseHTTPRequestHandler):
 
+    base_dir = os.getcwd()
+
     def send_json(self, obj, code = 200, headers = None):
         '''Send response as JSON'''
         if not headers:
@@ -118,13 +120,24 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         return self.send_json(resp)
 
     def browse(self):
-        # Get the directory to scan
+        # Get the directory from POST parameters
         dir = self.query_params['dir'][0] if 'dir' in self.query_params else '.'
         dir = dir.replace('..', '')
-        if dir[-1] != '/':
-            dir += '/'
 
-        dirs = [d for d in os.listdir(os.curdir + os.sep + dir) if '.' not in d]
+        # Locate dir
+        if dir != '.' :
+            dir = self.locate_dir(dir)
+
+        # Add slash
+        if dir[-1] != os.sep:
+            dir += os.sep
+
+        # If editor's been reloaded, skip file re-POST
+        if not os.path.isdir(dir):
+            return
+
+        # Unpack dir
+        dirs = [d for d in os.listdir(dir) if '.' not in d]
         files = glob.glob(dir + '*.*')
 
         # Filter on file types
@@ -135,11 +148,11 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
             elif 'scripts' in types:
                 files = [f for f in files if os.path.splitext(f)[1] == '.js']
 
-        # Format to Windows file structure
-        if os.name == 'nt':
-            files = [f.replace('\\', '/') for f in files]
-            dirs = [d.replace('\\', '/') for d in dirs]
+        # Normalize file paths
+        dirs = [os.path.normpath(d) for d in dirs]
+        files = [os.path.normpath(f) for f in files]
 
+        # Create response
         response = {
             'files': files,
             'dirs': dirs,
@@ -161,6 +174,15 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
             files = [f.replace('\\', '/') for f in files]
 
         return self.send_json(files)
+
+    def locate_dir(self, dir):
+        '''Locate passed-in directory relative to current script.
+            Returns passed-in dir if no path is found.'''
+        for root, dirs, files in os.walk('.'):
+            for d in dirs:
+                if( d == dir ):
+                    return os.path.join( root, d )
+        return dir
 
     def serve_file(self):
         path = self.file_path
