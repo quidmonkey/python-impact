@@ -25,100 +25,6 @@ BLANK_FAVICON = "GIF89a\x01\x00\x01\x00\xf0\x00\x00\xff\xff\xff\x00\x00\x00!\xff
 
 class HTTPHandler(http.server.BaseHTTPRequestHandler):
 
-    base_dir = os.getcwd()
-
-    def send_json(self, obj, code = 200, headers = None):
-        '''Send response as JSON'''
-        if not headers:
-            headers = {}
-        headers['Content-Type'] = 'application/json'
-        self.send_response(json.dumps(obj).encode('utf-8'), code, headers)
-
-    def send_response(self, data, code = 200, headers = None):
-        '''Wraps sending a response down'''
-        if not headers:
-            headers = {}
-        if 'Content-Type' not in headers:
-            headers['Content-Type'] = 'text/html'
-        http.server.BaseHTTPRequestHandler.send_response(self, code)
-        self.send_header('Content-Length', len(data))
-        if headers:
-            for k, v in headers.items():
-                self.send_header(k, v)
-        self.end_headers()
-        self.wfile.write(data)
-
-    def log_request(self, *args, **kwargs):
-        '''If logging is disabled'''
-        if SETTINGS['logging']:
-            self.log_request(*args, **kwargs)
-
-    def init_request(self):
-        parts = self.path.split('?', 1)
-        self.post_params = {}
-        if len(parts) == 1:
-            self.file_path = parts[0]
-            self.query_params = {}
-        else:
-            self.file_path = parts[0]
-            self.query_params = parse_qs(parts[1])
-
-    def do_GET(self):
-        self.init_request()
-        self.route_request('GET')
-
-    def do_POST(self):
-        self.init_request()
-
-        # From http://stackoverflow.com/questions/4233218/python-basehttprequesthandler-post-variables
-        # Grab content-type and content-length from self.headers dictionary
-        ctype, pdict = cgi.parse_header(self.headers['content-type'])
-        if ctype == 'multipart/form-data':
-            self.post_params = cgi.parse_multipart(self.rfile, pdict)
-        elif ctype == 'application/x-www-form-urlencoded':
-            length = int(self.headers['content-length'])
-            self.post_params = parse_qs(self.rfile.read(length), keep_blank_values = True)
-
-        self.route_request('POST')
-
-    def route_request(self, method = 'GET'):
-        if self.file_path == SETTINGS['api-save']:
-            self.save()
-        elif self.file_path == SETTINGS['api-browse']:
-            self.browse()
-        elif self.file_path == SETTINGS['api-glob']:
-            self.glob()
-        elif method == 'GET':
-            self.serve_file()
-        else:
-            self.illegal()
-
-    def save(self):
-        resp = {'error': 0}
-        # Look for byte keys
-        if b'path' in self.post_params and b'data' in self.post_params:
-            # Convert from bytes to string
-            path = self.post_params[b'path'][0].decode('utf-8')
-            path = os.curdir + os.sep + path.replace('..', '')
-            data = self.post_params[b'data'][0].decode('utf-8')
-
-            if path.endswith('.js'):
-                try:
-                    open(path, 'w').write(data)
-                except:
-                    resp['error'] = 2
-                    resp['msg'] = "Couldn't write to file %s" % path
-
-            else:
-                resp['error'] = 3
-                resp['msg'] = 'File must have a .js suffix'
-
-        else:
-            resp['error'] = 1
-            resp['msg'] = 'No Data or Path specified'
-
-        return self.send_json(resp)
-
     def browse(self):
         # Get the directory from POST parameters
         dir = self.query_params['dir'][0] if 'dir' in self.query_params else '.'
@@ -160,6 +66,24 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
         }
         return self.send_json(response)
 
+    def do_GET(self):
+        self.init_request()
+        self.route_request('GET')
+
+    def do_POST(self):
+        self.init_request()
+
+        # From http://stackoverflow.com/questions/4233218/python-basehttprequesthandler-post-variables
+        # Grab content-type and content-length from self.headers dictionary
+        ctype, pdict = cgi.parse_header(self.headers['content-type'])
+        if ctype == 'multipart/form-data':
+            self.post_params = cgi.parse_multipart(self.rfile, pdict)
+        elif ctype == 'application/x-www-form-urlencoded':
+            length = int(self.headers['content-length'])
+            self.post_params = parse_qs(self.rfile.read(length), keep_blank_values = True)
+
+        self.route_request('POST')
+
     def glob(self):
         globs = self.query_params['glob[]']
         files = []
@@ -175,6 +99,16 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
 
         return self.send_json(files)
 
+    def init_request(self):
+        parts = self.path.split('?', 1)
+        self.post_params = {}
+        if len(parts) == 1:
+            self.file_path = parts[0]
+            self.query_params = {}
+        else:
+            self.file_path = parts[0]
+            self.query_params = parse_qs(parts[1])
+
     def locate_dir(self, dir):
         '''Locate passed-in directory relative to current script.
             Returns passed-in dir if no path is found.'''
@@ -182,7 +116,71 @@ class HTTPHandler(http.server.BaseHTTPRequestHandler):
             for d in dirs:
                 if( d == dir ):
                     return os.path.join( root, d )
-        return dir
+        return 
+
+    def log_request(self, *args, **kwargs):
+        '''If logging is disabled'''
+        if SETTINGS['logging']:
+            self.log_request(*args, **kwargs)
+
+    def route_request(self, method = 'GET'):
+        if self.file_path == SETTINGS['api-save']:
+            self.save()
+        elif self.file_path == SETTINGS['api-browse']:
+            self.browse()
+        elif self.file_path == SETTINGS['api-glob']:
+            self.glob()
+        elif method == 'GET':
+            self.serve_file()
+        else:
+            self.illegal()
+
+    def save(self):
+        resp = {'error': 0}
+        # Look for byte keys
+        if b'path' in self.post_params and b'data' in self.post_params:
+            # Convert from bytes to string
+            path = self.post_params[b'path'][0].decode('utf-8')
+            path = os.curdir + os.sep + path.replace('..', '')
+            data = self.post_params[b'data'][0].decode('utf-8')
+
+            if path.endswith('.js'):
+                try:
+                    open(path, 'w').write(data)
+                except:
+                    resp['error'] = 2
+                    resp['msg'] = "Couldn't write to file %s" % path
+
+            else:
+                resp['error'] = 3
+                resp['msg'] = 'File must have a .js suffix'
+
+        else:
+            resp['error'] = 1
+            resp['msg'] = 'No Data or Path specified'
+
+        return self.send_json(resp)
+
+    def send_json(self, obj, code = 200, headers = None):
+        '''Send response as JSON'''
+        if not headers:
+            headers = {}
+        headers['Content-Type'] = 'application/json'
+        self.send_response(json.dumps(obj).encode('utf-8'), code, headers)
+
+    def send_response(self, data, code = 200, headers = None):
+        '''Wraps sending a response down'''
+        if not headers:
+            headers = {}
+        if 'Content-Type' not in headers:
+            headers['Content-Type'] = 'text/html'
+        http.server.BaseHTTPRequestHandler.send_response(self, code)
+        self.send_header('Content-Length', len(data))
+        if headers:
+            for k, v in headers.items():
+                self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(data)
 
     def serve_file(self):
         path = self.file_path
